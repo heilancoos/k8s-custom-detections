@@ -1,0 +1,47 @@
+customRules:
+  custom-rules.yaml: |-
+    - rule: Anonymous Request Allowed
+      desc: >
+        Detect any request made by the anonymous user that was allowed
+      condition: >
+        ka.user.name = "system:anonymous"
+      output: Request by anonymous user allowed (user=%ka.user.name group=%ka.user.groups verb=%ka.verb uri=%ka.uri reason=%ka.auth.reason)
+      priority: WARNING
+      source: k8s_audit
+      tags: [k8s, api, anonymous]
+    - rule: Anonymous Request Failed
+      desc: >
+        Detect any request made by the anonymous user that was blocked
+      condition: >
+        ka.user.name = "system:anonymous" and 
+        ka.auth.decision = "deny" 
+      output: Request by anonymous user denied (user=%ka.user.name group=%ka.user.groups verb=%ka.verb uri=%ka.uri reason=%ka.auth.reason ips=%ka.sourceips userAgent=%ka.useragent)
+      priority: WARNING
+      source: k8s_audit
+      tags: [k8s, api, anonymous]
+    - rule: Anonymous Listing Sensitive Resources
+      desc: >
+        Detect anonymous attempts to read secrets, configmaps, pods, or RBAC objects.
+      condition: >
+        ka.user.name = "system:anonymous"
+        and ka.verb in ("get", "list")
+        and ka.target.resource in ("secrets", "configmaps", "pods", "serviceaccounts", "clusterroles", "clusterrolebindings")
+      output: >
+        Anonymous user accessed sensitive resources
+        (user=%ka.user.name verb=%ka.verb resource=%ka.target.resource
+        namespace=%ka.target.namespace uri=%ka.uri reason=%ka.auth.reason)
+      priority: CRITICAL
+      source: k8s_audit
+      tags: [k8s, api, anonymous, secrets]
+    - rule: K8s Anonymous Pod Creation Attempt
+      desc: Detect attempts by system:anonymous to create or modify pods.
+      condition: >
+        ka.verb=create and
+        ka.user.name="system:anonymous" and
+        ka.target.resource=pods
+      output: >
+        Anonymous workload mutation attempt (verb=%ka.verb resource=%ka.target.resource
+        name=%ka.target.name ns=%ka.target.namespace from=%ka.sourceips reason=%ka.auth.reason)
+      priority: CRITICAL
+      source: k8s_audit
+      tags: [k8s, privilege-escalation, execution]
