@@ -1,0 +1,21 @@
+    - rule: Kubelet Remote Exec Attempt
+      desc: Detect attempts to execute commands inside a container through the kubelet API
+      condition: >
+        evt.type = execve and
+        proc.name in ("kubelet", "kubeletctl") and
+        (proc.cmdline contains "exec" or proc.cmdline contains "run") and
+        not user.name in ("root", "kubelet", "kubernetes")
+      output: >
+        Potential remote exec via kubelet API (cmd=%proc.cmdline user=%user.name container=%container.name)
+      priority: CRITICAL
+      tags: [k8s, kubelet, rce, lateral-movement]
+    - rule: Suspicious Kubelet Pod Enumeration
+      desc: Detect unauthenticated enumeration via kubelet API
+      condition: >
+        evt.type=connect and
+        (fd.typechar=4 or fd.typechar=6) and
+        fd.sport = 10250
+      output: >
+        Suspicious kubelet enumeration | connection=%fd.name lport=%fd.lport rport=%fd.rport fd_type=%fd.type fd_proto=%fd.l4proto evt_type=%evt.type user=%user.name user_uid=%user.uid user_loginuid=%user.loginuid process=%proc.name proc_exepath=%proc.exepath parent=%proc.pname command=%proc.cmdline terminal=%proc.tty
+      priority: WARNING
+      tags: [k8s, kubelet, reconnaissance]
