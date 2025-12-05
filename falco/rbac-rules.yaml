@@ -1,0 +1,69 @@
+    - rule: ClusterRole Binding To Anonymous User
+      desc: Detect attempts to bind ClusterRoles to anonymous users
+      condition: clusterrolebinding and kcreate and (ka.req.binding.subjects.user_names intersects ("system:unauthenticated", "system:anonymous"))
+      output: Cluster Role Binding to anonymous user (user=%ka.user.name subject=%ka.req.binding.subjects)
+      priority: WARNING 
+      tags: [k8s, mitre_persistence]
+      source: k8s_audit
+    - rule: ClusterRole Binding To Cluster Admin
+      desc: Detect attempts to bind ClusterRoles to anonymous users
+      condition: ka.target.resource in ("rolebindings", "clusterrolebindings") and kcreate and ka.req.binding.role=cluster-admin
+      output: Cluster Role Binding to Cluster Admin (user=%ka.user.name subject=%ka.req.binding.subjects)
+      priority: WARNING 
+      tags: [k8s, mitre_persistence, cluster-admin]
+      source: k8s_audit
+    - rule: K8s RBAC Wildcard Permissions Detected
+      desc: Detect creation or update of RBAC roles with wildcard verbs or resources
+      condition: >
+        ka.target.resource in ("roles", "clusterroles") and
+        ka.verb in (create, update, patch) and
+        (
+          ka.req.role.rules.resources intersects ("*") or
+          ka.req.role.rules.verbs intersects ("*")
+        )
+      output: >
+        RBAC wildcard detected: %ka.user.name modified %ka.target.resource with wildcard permissions
+      priority: WARNING
+      source: k8s_audit
+      tags: [k8s, rbac, audit, misconfiguration]
+    - rule: K8s Suspicious User Impersonation
+      desc: Detect attempts to impersonate another user or service account
+      condition: >
+        ka.impuser.name exists and
+        ka.impuser.name != ""
+      output: >
+        Suspicious impersonation attempt by %ka.user.name impersonating %ka.impuser.name (verb=%ka.verb uri=%ka.uri)
+      priority: WARNING
+      source: k8s_audit
+      tags: [k8s, rbac, impersonation, bypass]
+    - rule: K8s Namespaced SA Bound to ClusterRole
+      desc: Detect RoleBindings that bind a ServiceAccount to a ClusterRole
+      condition: >
+        ka.target.resource in ("rolebindings", "clusterrolebindings") and
+        ka.verb=create and
+        (len(ka.req.binding.subjects.serviceaccount_names) > 0 or len(ka.req.binding.subjects.serviceaccount_ns_names) > 0) and
+        ka.req.binding.role exists
+      output: >
+        Potential privilege escalation: %ka.user.name bound SA %ka.req.binding.subjects.name to ClusterRole %ka.req.binding.role
+      priority: WARNING
+      source: k8s_audit
+      tags: [k8s, rbac, privilege-escalation]
+    - rule: Debug All RoleBinding Creates
+      desc: Debug all rolebinding and clusterrolebinding creates
+      condition: >
+        ka.target.resource in ("rolebindings", "clusterrolebindings") and
+        ka.verb=create
+      output: >
+        DEBUG RoleBinding Create
+        (user=%ka.user.name
+        verb=%ka.verb
+        resource=%ka.target.resource
+        name=%ka.target.name
+        namespace=%ka.target.namespace
+        subjects=%ka.req.binding.subjects
+        role=%ka.req.binding.role
+        sa_names=%ka.req.binding.subjects.serviceaccount_names
+        sa_ns_names=%ka.req.binding.subjects.serviceaccount_ns_names)
+      priority: INFO
+      source: k8s_audit
+      tags: [debug]
