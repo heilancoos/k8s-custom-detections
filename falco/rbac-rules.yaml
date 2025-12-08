@@ -48,22 +48,3 @@
       priority: WARNING
       source: k8s_audit
       tags: [k8s, rbac, privilege-escalation]
-    - rule: Debug All RoleBinding Creates
-      desc: Debug all rolebinding and clusterrolebinding creates
-      condition: >
-        ka.target.resource in ("rolebindings", "clusterrolebindings") and
-        ka.verb=create
-      output: >
-        DEBUG RoleBinding Create
-        (user=%ka.user.name
-        verb=%ka.verb
-        resource=%ka.target.resource
-        name=%ka.target.name
-        namespace=%ka.target.namespace
-        subjects=%ka.req.binding.subjects
-        role=%ka.req.binding.role
-        sa_names=%ka.req.binding.subjects.serviceaccount_names
-        sa_ns_names=%ka.req.binding.subjects.serviceaccount_ns_names)
-      priority: INFO
-      source: k8s_audit
-      tags: [debug]
