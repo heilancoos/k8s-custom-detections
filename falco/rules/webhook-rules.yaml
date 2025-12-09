@@ -1,0 +1,34 @@
+- rule: Modify Admission Webhook Configuration
+      desc: Detect creation or modification of Mutating/ValidatingWebhookConfigurations
+      condition: >
+        ka.target.resource in (mutatingwebhookconfigurations, validatingwebhookconfigurations) and
+        ka.verb in (create, patch, update)
+      output: >
+        Potential malicious admission controller change |
+        user=%ka.user.name verb=%ka.verb resource=%ka.target.resource name=%ka.target.name
+      priority: CRITICAL
+      source: k8s_audit
+      tags: [k8s, security, admission]
+    - rule: Read Admission Webhook Configurations
+      desc: Detect attempts to list or get admission controller configurations
+      condition: >
+        ka.target.resource in (mutatingwebhookconfigurations, validatingwebhookconfigurations)
+        and ka.verb in (list, get)
+        and not (ka.user.name  in ("system:serviceaccount:kube-system:replicaset-controller", "system:kube-controller-manager", "system:apiserver"))
+      output: >
+        Suspicious enumeration of admission controllers |
+        user=%ka.user.name verb=%ka.verb resource=%ka.target.resource
+      priority: WARNING
+      source: k8s_audit
+      tags: [k8s, admission, recon]
+    - rule: Delete Admission Webhook Configuration
+      desc: Detect deletion of admission controller configurations
+      condition: >
+        ka.target.resource in (mutatingwebhookconfigurations, validatingwebhookconfigurations) and
+        ka.verb=delete
+      output: >
+        Admission webhook deleted |
+        user=%ka.user.name resource=%ka.target.resource name=%ka.target.name
+      priority: CRITICAL
+      source: k8s_audit
+      tags: [k8s, persistence, admission]
