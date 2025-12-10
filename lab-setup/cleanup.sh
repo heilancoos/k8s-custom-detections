@@ -30,7 +30,8 @@ fi
 
 echo -e "${GREEN}[+] Deleting Falco namespace...${NC}"
 microk8s kubectl delete namespace falco --ignore-not-found=true
-
+echo -e "${GREEN}[+] Deleting Helm...${NC}"
+sudo snap remove helm || true
 ### FULL MICROK8S RESET
 ### ---------------------------------------------------------
 
