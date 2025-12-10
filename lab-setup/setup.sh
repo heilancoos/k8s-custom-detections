@@ -50,7 +50,12 @@ chown -f -R "$SUDO_USER" ~/.kube || true
 # Enable essential addons
 info "Enabling MicroK8s addons (dns, storage)..."
 microk8s status --wait-ready
+echo -e "${GREEN}[+] Setting kubectl alias...${NC}"
+echo 'alias kubectl="microk8s kubectl"' >> ~/.bashrc
+source ~/.bashrc
+
 microk8s enable dns storage
+microk8s disable ha-cluster
 
 success "MicroK8s installed successfully."
 
@@ -59,8 +64,7 @@ success "MicroK8s installed successfully."
 # -----------------------------
 info "Installing Helm..."
 
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash || \
-    error "Failed to install Helm"
+sudo snap install helm --classic || error "Failed to install Helm"
 
 success "Helm installed successfully."
 
@@ -68,26 +72,21 @@ success "Helm installed successfully."
 # Install Falco via Helm
 # -----------------------------
 info "Adding Falco Helm repository..."
-microk8s helm repo add falcosecurity https://falcosecurity.github.io/charts
-microk8s helm repo update
+helm repo add falcosecurity https://falcosecurity.github.io/charts
+helm repo update
 
-# Create namespace
-info "Creating 'falco' namespace..."
-microk8s kubectl create namespace falco --dry-run=ignore -o yaml | microk8s kubectl apply -f -
 
 # Install Falco
 info "Installing Falco via Helm..."
 
 if [[ -f values.yaml ]]; then
-    microk8s helm upgrade --install falco falcosecurity/falco \
+    helm install --replace falco --namespace falco --create-namespace --set tty=true falcosecurity/falco \
         --namespace falco \
         --set tty=true \
         -f values.yaml
 else
     info "No values.yaml found; installing Falco with default values."
-    microk8s helm upgrade --install falco falcosecurity/falco \
-        --namespace falco \
-        --set tty=true
+    helm install --replace falco --namespace falco --create-namespace --set tty=true falcosecurity/falco
 fi
 
 success "Falco installed successfully!"
@@ -103,4 +102,3 @@ echo "Check Falco logs:"
 echo ""
 echo "    microk8s kubectl -n falco logs -l app=falco"
 echo ""
-
