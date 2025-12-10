@@ -32,7 +32,7 @@ error () {
 
 # Check root or sudo privileges
 if [[ $EUID -ne 0 ]]; then
-    error "This script must be run as root. Try: sudo ./install-microk8s-helm-falco.sh"
+    error "This script must be run as root"
 fi
 
 # -----------------------------
@@ -41,12 +41,18 @@ fi
 info "Installing MicroK8s..."
 
 snap install microk8s --classic || error "Failed to install MicroK8s"
+microk8s disable ha-cluster --force
+microk8s status --wait-ready
+
 
 # Add current user to microk8s group
 info "Adding current user ($SUDO_USER) to microk8s group..."
 usermod -a -G microk8s "$SUDO_USER"
-chown -f -R "$SUDO_USER" ~/.kube || true
+info "creating kubeconfig"
 
+mkdir -p ~/.kube
+chmod 0700 ~/.kube
+microk8s config > ~/.kube/config
 # Enable essential addons
 info "Enabling MicroK8s addons (dns, storage)..."
 microk8s status --wait-ready
@@ -54,8 +60,10 @@ echo -e "${GREEN}[+] Setting kubectl alias...${NC}"
 echo 'alias kubectl="microk8s kubectl"' >> ~/.bashrc
 source ~/.bashrc
 
-microk8s enable dns storage
-microk8s disable ha-cluster
+microk8s enable dns 
+microk8s enable storage
+
+
 
 success "MicroK8s installed successfully."
 
@@ -88,6 +96,7 @@ else
     info "No values.yaml found; installing Falco with default values."
     helm install --replace falco --namespace falco --create-namespace --set tty=true falcosecurity/falco
 fi
+helm install k8s-metacollector --namespace falco falcosecurity/k8s-metacollector
 
 success "Falco installed successfully!"
 
@@ -97,8 +106,6 @@ success "Falco installed successfully!"
 echo ""
 success "Installation complete!"
 echo ""
-echo "Log out and back in (or run 'newgrp microk8s') to apply group changes."
-echo "Check Falco logs:"
-echo ""
-echo "    microk8s kubectl -n falco logs -l app=falco"
-echo ""
+info "Reseting session"
+exec $SHELL -l
+
