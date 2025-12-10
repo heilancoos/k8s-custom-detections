@@ -1,1 +1,60 @@
+driver:
+  enabled: true
+  kind: modern_ebpf
+
+collectors:
+  kubernetes:
+    enabled: true
+
+falco:
+  load_plugins:
+    - k8saudit
+    - json
+  plugins:
+    - name: k8saudit
+      library_path: libk8saudit.so
+      open_params: "http://:9765/k8s-audit"
+    - name: json
+      library_path: libjson.so
+      init_config: ""
+  rule_matching: all
+
+
+services:
+  - name: k8saudit-webhook
+    type: NodePort
+    ports:
+      - port: 9765
+        nodePort: 30007
+        protocol: TCP
+
+falcosidekick:
+  enabled: true
+  webui:
+    enabled: true
+
+falcoctl:
+  artifact:
+    install:
+      enabled: true
+    follow:
+      enabled: true
+  config:
+    artifact:
+      allowedTypes:
+        - rulesfile
+        - plugin
+      install:
+        resolveDeps: true
+        refs:
+          - falco-rules:5
+          - k8saudit-rules:0
+          - k8saudit:0
+          - json:0
+      follow:
+        refs:
+          - falco-rules:5
+          - k8saudit-rules:0
+          - k8saudit:0
+          - json:0
 
