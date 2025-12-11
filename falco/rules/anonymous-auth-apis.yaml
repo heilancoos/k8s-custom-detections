@@ -1,25 +1,26 @@
 customRules:
-  custom-rules.yaml: |-
+  anon-apiserver.yaml: |-
     - rule: Anonymous Request Allowed
       desc: >
-        Detect any request made by the anonymous user that was allowed
+        Detect any request made by the anonymous user that was allowed.
       condition: >
-        ka.user.name = "system:anonymous"
+        ka.user.name = "system:anonymous" and
+        ka.response.code in (200, 201)
       output: Request by anonymous user allowed (user=%ka.user.name group=%ka.user.groups verb=%ka.verb uri=%ka.uri reason=%ka.auth.reason)
-      priority: WARNING
+      priority: NOTICE
       source: k8s_audit
-      tags: [k8s, api, anonymous]
+      tags: [T1078, access, anonymous]
     - rule: Anonymous Request Failed
       desc: >
-        Detect any request made by the anonymous user that was blocked
+        Detect any request made by the anonymous user that was blocked. These often indicate reconnaissance or probing against the API server.
       condition: >
         ka.user.name = "system:anonymous" and 
-        ka.auth.decision = "deny" 
+        ka.response.code in (401, 403) 
       output: Request by anonymous user denied (user=%ka.user.name group=%ka.user.groups verb=%ka.verb uri=%ka.uri reason=%ka.auth.reason ips=%ka.sourceips userAgent=%ka.useragent)
-      priority: WARNING
+      priority: NOTICE
       source: k8s_audit
-      tags: [k8s, api, anonymous]
-    - rule: Anonymous Listing Sensitive Resources
+      tags: [T1078, access, anonymous]
+    - rule: Anonymous Resource Access
       desc: >
         Detect anonymous attempts to read secrets, configmaps, pods, or RBAC objects.
       condition: >
@@ -27,36 +28,34 @@ customRules:
         and ka.verb in ("get", "list")
         and ka.target.resource in ("secrets", "configmaps", "pods", "serviceaccounts", "clusterroles", "clusterrolebindings")
       output: >
-        Anonymous user accessed sensitive resources
-        (user=%ka.user.name verb=%ka.verb resource=%ka.target.resource
-        namespace=%ka.target.namespace uri=%ka.uri reason=%ka.auth.reason)
-      priority: CRITICAL
+        Anonymous user accessed sensitive resources (user=%ka.user.name group=%ka.user.groups verb=%ka.verb uri=%ka.uri reason=%ka.auth.reason ips=%ka.sourceips userAgent=%ka.useragent)
+      priority: WARNING
       source: k8s_audit
-      tags: [k8s, api, anonymous, secrets]
-    - rule: K8s Anonymous Pod Creation Attempt
+      tags: [T1613, anonymous, secrets]
+    - rule: Anonymous Pod Creation Attempt
       desc: Detect attempts by system:anonymous to create or modify pods.
       condition: >
-        ka.verb=create and
+        ka.verb in ("create", "update", "patch") and
         ka.user.name="system:anonymous" and
         ka.target.resource=pods
       output: >
-        Anonymous workload mutation attempt (verb=%ka.verb resource=%ka.target.resource
-        name=%ka.target.name ns=%ka.target.namespace from=%ka.sourceips reason=%ka.auth.reason)
+        Anonymous workload mutation attempt (verb=%ka.verb resource=%ka.target.resource name=%ka.target.name ns=%ka.target.namespace from=%ka.sourceips reason=%ka.auth.reason uri=%ka.uri userAgent=%ka.useragent reason=%ka.auth.reason)
       priority: CRITICAL
       source: k8s_audit
-      tags: [k8s, privilege-escalation, execution]
-        - rule: Kubelet Remote Exec Attempt
+      tags: [T1610, privilege-escalation, execution]
+  anon-kubeletapi.yaml: |-
+    - rule: Kubelet Remote Exec Attempt
       desc: Detect attempts to execute commands inside a container through the kubelet API
       condition: >
         evt.type = execve and
-        proc.name in ("kubelet", "kubeletctl") and
-        (proc.cmdline contains "exec" or proc.cmdline contains "run") and
-        not user.name in ("root", "kubelet", "kubernetes")
+        proc.name in ("curl", "kubeletctl") and
+        ((proc.cmdline contains "exec" or proc.cmdline contains "run") or (proc.cmdline contains "/run/" or proc.cmdline contains "/exec")) and
+        not user.name contains "kubelet"
       output: >
         Potential remote exec via kubelet API (cmd=%proc.cmdline user=%user.name container=%container.name)
-      priority: CRITICAL
-      tags: [k8s, kubelet, rce, lateral-movement]
-    - rule: Suspicious Kubelet Pod Enumeration
+      priority: WARNING
+      tags: [T1204, kubelet, rce, lateral-movement]
+    - rule: Anonymous Kubelet API Enumeration
       desc: Detect unauthenticated enumeration via kubelet API
       condition: >
         evt.type=connect and
@@ -65,4 +64,5 @@ customRules:
       output: >
         Suspicious kubelet enumeration | connection=%fd.name lport=%fd.lport rport=%fd.rport fd_type=%fd.type fd_proto=%fd.l4proto evt_type=%evt.type user=%user.name user_uid=%user.uid user_loginuid=%user.loginuid process=%proc.name proc_exepath=%proc.exepath parent=%proc.pname command=%proc.cmdline terminal=%proc.tty
       priority: WARNING
-      tags: [k8s, kubelet, reconnaissance]
+      tags: [T1613, kubelet, reconnaissance]
+  
