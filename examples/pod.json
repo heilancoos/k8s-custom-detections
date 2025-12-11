@@ -1,0 +1,15 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "name": "anon-poc"
+  },
+  "spec": {
+    "containers": [
+      {
+        "name": "test",
+        "image": "nginx:latest"
+      }
+    ]
+  }
+}
