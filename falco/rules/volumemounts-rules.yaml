@@ -1,0 +1,40 @@
+customRules:
+  writablevolumemounts-rules.yaml: |-
+    - rule: Symlink To Host Files
+      desc: Detect creation of symlinks inside a container that point to sensitive host paths
+      condition: >
+        (evt.type in (symlink, symlinkat)) and
+        (evt.arg.target in ("/etc/shadow", "/etc/sudoers", "/etc/passwd") or 
+        evt.arg.target in ("/etc/sudoers.d", "/etc", "/var/log")) and
+        not proc.cmdline contains "podman"
+      output: >
+        Suspicious symlink created inside container (src=%evt.arg.path target=%evt.arg.target proc=%proc.cmdline user=%user.name file=%fd.filename linkpath=%evt.arg.linkpath process=%proc.name proc_exepath=%proc.exepath parent=%proc.pname command=%proc.cmdline terminal=%proc.tty)
+      priority: WARNING
+      tags: [T1611, container, host-escape, symlink]
+    - rule: Pod Using hostPath to Mount Root Filesystem
+      desc: Detects creation of a pod mounting / from the host filesystem, which allows full host takeover.
+      condition: >
+        ka.target.resource = "pods" and
+        ka.verb=create and
+        ka.req.pod.volumes.hostpath intersects (/)
+      output: >
+        HostPath Root Mount Detected:
+        user=%ka.user.name pod=%ka.req.pod.containers.name namespace=%ka.target.namespace
+        hostPath=%ka.req.pod.volumes.hostpath
+      priority: WARNING
+      source: k8s_audit
+      tags: [T1611, hostpath, privilege-escalation, container-escape]
+    - rule: Container Accessing Mounted Host Root Filesystem
+      desc: Detects a container reading or writing files inside a hostPath-mounted root filesystem.
+      condition: >
+        (container.id != host) and
+        evt.type in (open, openat, openat2) and
+        k8s.ns.name != "falco" and
+        not k8s.pod.name contains "falco" and
+        fd.name startswith "/host"
+      output: >
+        Suspicious access to host root filesystem.
+        container=%container.name image=%container.image.fullpath
+        user=%user.name file=%fd.name
+      priority: CRITICAL
+      tags: [T1611, hostpath, escape, privilege-escalation]
