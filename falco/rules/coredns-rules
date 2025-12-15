@@ -1,0 +1,41 @@
+customRules:
+  coredns-rules.yaml: |-
+    - rule: CoreDNS Rewrite Rule Added
+      desc: Detect addition of rewrite rules in CoreDNS ConfigMap
+      condition: >
+        ka.verb in (create, update, patch) and
+        ka.target.resource = "configmaps" and
+        ka.req.configmap.name = "coredns" and
+        ka.req.configmap.obj contains "rewrite"
+      output: >
+        CoreDNS rewrite rule added or modified (user=%ka.user.name verb=%ka.verb req=%ka.req.configmap.obj)
+      priority: WARNING
+      source: k8s_audit
+      tags: [T1543, poisoning, coredns]
+    - rule: CoreDNS ConfigMap Modified
+      desc: Detects modifications to the CoreDNS ConfigMap
+      condition: >
+        ka.req.configmap.name = "coredns" and
+        ka.target.namespace = "kube-system" and
+        ka.target.resource = "configmaps" and
+        ka.verb in ("create", "update", "patch")
+      output: >
+        CoreDNS ConfigMap modified by unauthorized user
+        (user=%ka.user.name verb=%ka.verb 
+        target=%ka.target.name namespace=%ka.target.namespace
+        source_ips=%ka.sourceips user_agent=%ka.useragent)
+      priority: WARNING
+      source: k8s_audit
+      tags: [T1543, poisoning, coredns]
+    - rule: Unusual CoreDNS Access Attempt
+      desc: Detect attempts to GET or LIST the CoreDNS ConfigMap
+      condition: >
+        ka.verb in ("get", "list") and
+        ka.target.resource = "configmaps" and
+        ka.req.configmap.name = "coredns" and
+        ka.target.namespace = "kube-system"
+      output: >
+        Unauthorized access attempt to CoreDNS ConfigMap (user=%ka.user.name verb=%ka.verb)
+      priority: NOTICE
+      source: k8s_audit
+      tags: [discovery, reconaissance, coredns]
