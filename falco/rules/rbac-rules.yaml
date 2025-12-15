@@ -1,18 +1,26 @@
+customRules:
+  rbac-rules.yaml: |-
     - rule: ClusterRole Binding To Anonymous User
       desc: Detect attempts to bind ClusterRoles to anonymous users
-      condition: clusterrolebinding and kcreate and (ka.req.binding.subjects.user_names intersects ("system:unauthenticated", "system:anonymous"))
+      condition: >
+        ka.target.resource=clusterrolebindings and
+        ka.verb=create and 
+        (ka.req.binding.subjects.user_names intersects ("system:unauthenticated", "system:anonymous"))
       output: Cluster Role Binding to anonymous user (user=%ka.user.name subject=%ka.req.binding.subjects)
       priority: WARNING 
-      tags: [k8s, mitre_persistence]
+      tags: [T1098.006, rbac, access-control, persistence]
       source: k8s_audit
     - rule: ClusterRole Binding To Cluster Admin
       desc: Detect attempts to bind ClusterRoles to anonymous users
-      condition: ka.target.resource in ("rolebindings", "clusterrolebindings") and kcreate and ka.req.binding.role=cluster-admin
+      condition: >
+        ka.target.resource in ("rolebindings", "clusterrolebindings") and 
+        ka.verb=create and 
+        ka.req.binding.role=cluster-admin
       output: Cluster Role Binding to Cluster Admin (user=%ka.user.name subject=%ka.req.binding.subjects)
       priority: WARNING 
-      tags: [k8s, mitre_persistence, cluster-admin]
+      tags: [T1098.006, rbac, access-control, persistence]
       source: k8s_audit
-    - rule: K8s RBAC Wildcard Permissions Detected
+    - rule: RBAC Wildcard Permissions Detected
       desc: Detect creation or update of RBAC roles with wildcard verbs or resources
       condition: >
         ka.target.resource in ("roles", "clusterroles") and
@@ -23,10 +31,10 @@
         )
       output: >
         RBAC wildcard detected: %ka.user.name modified %ka.target.resource with wildcard permissions
-      priority: WARNING
+      priority: CRITICAL
       source: k8s_audit
-      tags: [k8s, rbac, audit, misconfiguration]
-    - rule: K8s Namespaced SA Bound to ClusterRole
+      tags: [misconfiguration, rbac, access-control, persistence]
+    - rule: Namespaced SA Bound to ClusterRole
       desc: Detect RoleBindings that bind a ServiceAccount to a ClusterRole
       condition: >
         ka.target.resource in ("rolebindings", "clusterrolebindings") and
@@ -37,4 +45,4 @@
         Potential privilege escalation: %ka.user.name bound SA %ka.req.binding.subjects.name to ClusterRole %ka.req.binding.role
       priority: WARNING
       source: k8s_audit
-      tags: [k8s, rbac, privilege-escalation]
+      tags: [T1098.006, rbac, access-control, persistence, privilege-escalation]
