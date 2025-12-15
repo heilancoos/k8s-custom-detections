@@ -26,16 +26,6 @@
       priority: WARNING
       source: k8s_audit
       tags: [k8s, rbac, audit, misconfiguration]
-    - rule: K8s Suspicious User Impersonation
-      desc: Detect attempts to impersonate another user or service account
-      condition: >
-        ka.impuser.name exists and
-        ka.impuser.name != ""
-      output: >
-        Suspicious impersonation attempt by %ka.user.name impersonating %ka.impuser.name (verb=%ka.verb uri=%ka.uri)
-      priority: WARNING
-      source: k8s_audit
-      tags: [k8s, rbac, impersonation, bypass]
     - rule: K8s Namespaced SA Bound to ClusterRole
       desc: Detect RoleBindings that bind a ServiceAccount to a ClusterRole
       condition: >
