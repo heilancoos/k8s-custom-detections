@@ -44,15 +44,19 @@ These scripts:
 ```bash
 git clone https://github.com/heilancoos/k8s-custom-detections.git
 cd k8s-custom-detections
-chmod +x ./setup.sh && ./setup.sh
+chmod +x ./lab_setup/setup.sh && ./lab_setup/setup.sh
 ```
 ### Running Individual Tests
 Example:
+
 ```bash
 ./examples/rbac-rules-test.sh
 ```
 
 ## Clean Up
 ```bash
+./lab_setup/clean.sh
+```
+```
 ./cleanup.sh
 ```bash
