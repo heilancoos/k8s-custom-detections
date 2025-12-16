@@ -1,0 +1,45 @@
+customRules:
+  goldenticket-rules.yaml: |-
+    - rule: Read of Kubernetes CA Key
+      desc: Detect any process reading the Kubernetes CA private key
+      condition: >
+        evt.type in (open,openat,openat2) and 
+        fd.name in (/etc/kubernetes/pki/ca.key, /etc/kubernetes/pki/sa.key, /var/snap/microk8s/current/certs/ca.key, /var/snap/microk8s/current/certs/serviceaccount.key) and 
+        not (proc.name in (kube-apiserver, etcd, microk8s.daemon-kubelite, systemd))
+      output: >
+        Suspicious read of Kubernetes private key file |
+        process=%proc.name user=%user.name file=%fd.name container=%container.id
+      priority: NOTICE
+      tags: [pki, credential-access, T1552]
+    - rule: Suspicious ServiceAccount Enumeration
+      desc: Detect attempts to list all service accounts cluster-wide
+      condition: >
+        ka.auth.decision = "allow" and
+        ka.verb in ("get", "list") and
+        ka.target.resource = "serviceaccounts" and
+        not ka.user.name startswith "system:" and
+        (
+          ka.useragent icontains "Python" or 
+          ka.useragent icontains "go-http-client" or 
+          ka.useragent icontains "curl"
+        )
+      output: >
+        Cluster-wide ServiceAccount enumeration |
+        user=%ka.user.name agent=%ka.useragent src=%ka.sourceips uri=%ka.uri
+      priority: WARNING
+      source: k8s_audit
+      tags: [serviceaccount, discovery, T1613]
+    - rule: Kubernetes Private Key Exfil
+      desc: Detect common tools used to exfiltrate Kubernetes CA/SA keys
+      condition: >
+        evt.type = execve and
+        proc.name in (cp, scp, rsync, tar, nc, ncat, curl, wget, base64, bzip2, gzip) and
+        (
+          proc.args contains "/var/snap/microk8s/current/certs/ca.key" or 
+          proc.args contains "/var/snap/microk8s/current/certs/serviceaccount.key"
+        )
+      output: >
+        [K8s Golden Ticket] Potential CA/SA key exfiltration using %proc.name |
+        user=%user.name cmd=%proc.cmdline
+      priority: WARNING
+      tags: [pki, exfiltration, T1005, credential-access]
