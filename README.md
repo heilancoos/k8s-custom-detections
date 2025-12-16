@@ -13,8 +13,21 @@ These detections were developed as part of a larger research project on Kubernet
 - Malicious admission controllers
 - Kubernetes “Golden Ticket” certificate forgery
 
-The goal of this repo is to provide actionable detections and easy reproduction steps for defenders, students, and researchers.
+**Blog Post**: https://heilancoos.github.io/research/2025/12/17/kubernetes.html
+### `falco/rules/`
+Contains **custom Falco rules** grouped by attack surface (RBAC, CoreDNS, etcd, admission controllers, etc.).
 
+Each file focuses on a specific attack class and is intended to be:
+- Readable
+- Auditable
+- Tunable for real environments
+
+### `examples/`
+Contains **reproducible test scripts** that intentionally trigger the detections.
+
+These scripts:
+- Simulate attacker behavior
+- Can be run individually or chained
 
 ## Usage
 
@@ -24,3 +37,13 @@ git clone https://github.com/heilancoos/k8s-custom-detections.git
 cd k8s-custom-detections
 chmod +x ./setup.sh && ./setup.sh
 ```
+### Running Individual Tests
+Example:
+```bash
+./examples/rbac-rules-test.sh
+```
+
+## Clean Up
+```bash
+./cleanup.sh
+```bash
