@@ -17,3 +17,9 @@ The goal of this repo is to provide actionable detections and easy reproduction 
 
 
 ## How to use this repo
+
+```bash
+git clone https://github.com/heilancoos/k8s-custom-detections.git
+cd k8s-custom-detections
+chmod +x ./setup.sh && ./setup.sh
+```
