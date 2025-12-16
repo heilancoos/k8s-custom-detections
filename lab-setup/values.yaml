@@ -58,3 +58,381 @@ falcoctl:
           - k8saudit:0
           - json:0
 
+customRules:
+  anon-apiserver.yaml: |-
+    - rule: Anonymous Request Allowed
+      desc: >
+        Detect any request made by the anonymous user that was allowed.
+      condition: >
+        ka.user.name = "system:anonymous" and
+        ka.response.code in (200, 201)
+      output: Request by anonymous user allowed (user=%ka.user.name group=%ka.user.groups verb=%ka.verb uri=%ka.uri reason=%ka.auth.reason)
+      priority: NOTICE
+      source: k8s_audit
+      tags: [T1078, access, anonymous]
+    - rule: Anonymous Request Failed
+      desc: >
+        Detect any request made by the anonymous user that was blocked. These often indicate reconnaissance or probing against the API server.
+      condition: >
+        ka.user.name = "system:anonymous" and 
+        ka.response.code in (401, 403) 
+      output: Request by anonymous user denied (user=%ka.user.name group=%ka.user.groups verb=%ka.verb uri=%ka.uri reason=%ka.auth.reason ips=%ka.sourceips userAgent=%ka.useragent)
+      priority: NOTICE
+      source: k8s_audit
+      tags: [T1078, access, anonymous]
+    - rule: Anonymous Resource Access
+      desc: >
+        Detect anonymous attempts to read secrets, configmaps, pods, or RBAC objects.
+      condition: >
+        ka.user.name = "system:anonymous"
+        and ka.verb in ("get", "list")
+        and ka.target.resource in ("secrets", "configmaps", "pods", "serviceaccounts", "clusterroles", "clusterrolebindings")
+      output: >
+        Anonymous user accessed sensitive resources (user=%ka.user.name group=%ka.user.groups verb=%ka.verb uri=%ka.uri reason=%ka.auth.reason ips=%ka.sourceips userAgent=%ka.useragent)
+      priority: WARNING
+      source: k8s_audit
+      tags: [T1613, anonymous, secrets]
+    - rule: Anonymous Pod Creation Attempt
+      desc: Detect attempts by system:anonymous to create or modify pods.
+      condition: >
+        ka.verb in ("create", "update", "patch") and
+        ka.user.name="system:anonymous" and
+        ka.target.resource=pods
+      output: >
+        Anonymous workload mutation attempt (verb=%ka.verb resource=%ka.target.resource name=%ka.target.name ns=%ka.target.namespace from=%ka.sourceips reason=%ka.auth.reason uri=%ka.uri userAgent=%ka.useragent reason=%ka.auth.reason)
+      priority: CRITICAL
+      source: k8s_audit
+      tags: [T1610, privilege-escalation, execution]
+  anon-kubeletapi.yaml: |-
+    - rule: Kubelet Remote Exec Attempt
+      desc: Detect attempts to execute commands inside a container through the kubelet API
+      condition: >
+        evt.type = execve and
+        proc.name in ("curl", "kubeletctl") and
+        ((proc.cmdline contains "exec" or proc.cmdline contains "run") or (proc.cmdline contains "/run/" or proc.cmdline contains "/exec")) and
+        not user.name contains "kubelet"
+      output: >
+        Potential remote exec via kubelet API (cmd=%proc.cmdline user=%user.name container=%container.name)
+      priority: WARNING
+      tags: [T1204, kubelet, rce, lateral-movement]
+    - rule: Anonymous Kubelet API Enumeration
+      desc: Detect unauthenticated enumeration via kubelet API
+      condition: >
+        evt.type=connect and
+        (fd.typechar=4 or fd.typechar=6) and
+        fd.sport = 10250
+      output: >
+        Suspicious kubelet enumeration | connection=%fd.name lport=%fd.lport rport=%fd.rport fd_type=%fd.type fd_proto=%fd.l4proto evt_type=%evt.type user=%user.name user_uid=%user.uid user_loginuid=%user.loginuid process=%proc.name proc_exepath=%proc.exepath parent=%proc.pname command=%proc.cmdline terminal=%proc.tty
+      priority: WARNING
+      tags: [T1613, kubelet, reconnaissance]
+  coredns-rules.yaml: |-
+    - rule: CoreDNS Rewrite Rule Added
+      desc: Detect addition of rewrite rules in CoreDNS ConfigMap
+      condition: >
+        ka.verb in (create, update, patch) and
+        ka.target.resource = "configmaps" and
+        ka.req.configmap.name = "coredns" and
+        ka.req.configmap.obj contains "rewrite"
+      output: >
+        CoreDNS rewrite rule added or modified (user=%ka.user.name verb=%ka.verb req=%ka.req.configmap.obj)
+      priority: WARNING
+      source: k8s_audit
+      tags: [T1543, poisoning, coredns]
+    - rule: CoreDNS ConfigMap Modified
+      desc: Detects modifications to the CoreDNS ConfigMap
+      condition: >
+        ka.req.configmap.name = "coredns" and
+        ka.target.namespace = "kube-system" and
+        ka.target.resource = "configmaps" and
+        ka.verb in ("create", "update", "patch")
+      output: >
+        CoreDNS ConfigMap modified by unauthorized user
+        (user=%ka.user.name verb=%ka.verb 
+        target=%ka.target.name namespace=%ka.target.namespace
+        source_ips=%ka.sourceips user_agent=%ka.useragent)
+      priority: WARNING
+      source: k8s_audit
+      tags: [T1543, poisoning, coredns]
+    - rule: Unusual CoreDNS Access Attempt
+      desc: Detect attempts to GET or LIST the CoreDNS ConfigMap
+      condition: >
+        ka.verb in ("get", "list") and
+        ka.target.resource = "configmaps" and
+        ka.req.configmap.name = "coredns" and
+        ka.target.namespace = "kube-system"
+      output: >
+        Unauthorized access attempt to CoreDNS ConfigMap (user=%ka.user.name verb=%ka.verb)
+      priority: NOTICE
+      source: k8s_audit
+      tags: [discovery, reconaissance, coredns]
+  etcd-rules.yaml: |-
+    - rule: ETCD Access
+      desc: Detect any process accessing etcd client port
+      condition: >
+        evt.type=connect and
+        fd.sport=12379 and 
+        not proc.name in (kube-apiserver, kubelite, etcd)
+      output: Unexpected etcd connection from %proc.name (%fd.cip:%fd.cport)
+      priority: NOTICE
+      tags: [etcd, discovery, T1613]
+    - rule: ETCD Pod Tampering
+      desc: Detects attempts to create, delete, or modify pod objects in etcd using etcdctl
+      condition: >
+        evt.type=execve and
+        proc.name=etcdctl and
+        (
+          proc.cmdline contains "put" or
+          proc.cmdline contains "del"
+        ) and
+        (
+          proc.args contains "/registry/pods" or
+          proc.cmdline contains "/registry/pods"
+        )
+      output: >
+        Pod injection attempt via etcdctl detected
+        (user=%user.name cmd=%proc.cmdline pid=%proc.pid file=%proc.exe) 
+      priority: CRITICAL
+      tags: [persistence, etcd, api-bypass, T1525]
+    - rule: ETCD read attempt from unusual source detected
+      desc: Detects attemtps to read sensitive information from etcd
+      condition: >
+        evt.type=execve and
+        proc.name=etcdctl and 
+        (
+          proc.args contains "get" or
+          proc.cmdline contains "get"
+        ) and
+        (
+          proc.cmdline contains "/registry/pods" or 
+          proc.cmdline contains "/registry/secrets" or 
+          proc.cmdline contains "/registry/configmaps"
+        )
+      output: >
+        ETCD read attempt detected (user=%user.name cmd=%proc.cmdline pid=%proc.pid file=%proc.exe)
+      priority: WARNING
+      tags: [etcd, control-plane, T1525]
+    - rule: ETCD Snapshot Created
+      desc: Detect creation of ETCD snapshots, which may indicate cluster state exfiltration
+      condition: >
+        evt.type = execve and
+        proc.name = "etcdctl" and
+        proc.cmdline contains "snapshot" and
+        proc.cmdline contains "save"
+      output: >
+        ETCD snapshot created (proc=%proc.cmdline user=%user.name)
+      priority: CRITICAL
+      tags: [etcd, exfiltration, discovery, credential-access, T1613]
+    - rule: ETCD Registry Deletion
+      desc: Detect deletion of Kubernetes objects directly from etcd
+      condition: >
+        evt.type = execve and
+        proc.name = etcdctl and
+        proc.cmdline contains "del" and
+        proc.cmdline contains "/registry/"
+      output: >
+        Direct deletion of Kubernetes objects from etcd |
+        cmd=%proc.cmdline user=%user.name
+      priority: CRITICAL
+      tags: [etcd, defense-evasion, T1485]
+  goldenticket-rules.yaml: |-
+    - rule: Read of Kubernetes CA Key
+      desc: Detect any process reading the Kubernetes CA private key
+      condition: >
+        evt.type in (open,openat,openat2) and 
+        fd.name in (/etc/kubernetes/pki/ca.key, /etc/kubernetes/pki/sa.key, /var/snap/microk8s/current/certs/ca.key, /var/snap/microk8s/current/certs/serviceaccount.key) and 
+        not (proc.name in (kube-apiserver, etcd, microk8s.daemon-kubelite, systemd))
+      output: >
+        Suspicious read of Kubernetes private key file |
+        process=%proc.name user=%user.name file=%fd.name container=%container.id
+      priority: NOTICE
+      tags: [pki, credential-access, T1552]
+    - rule: Suspicious ServiceAccount Enumeration
+      desc: Detect attempts to list all service accounts cluster-wide
+      condition: >
+        ka.auth.decision = "allow" and
+        ka.verb in ("get", "list") and
+        ka.target.resource = "serviceaccounts" and
+        not ka.user.name startswith "system:" and
+        (
+          ka.useragent icontains "Python" or 
+          ka.useragent icontains "go-http-client" or 
+          ka.useragent icontains "curl"
+        )
+      output: >
+        Cluster-wide ServiceAccount enumeration |
+        user=%ka.user.name agent=%ka.useragent src=%ka.sourceips uri=%ka.uri
+      priority: WARNING
+      source: k8s_audit
+      tags: [serviceaccount, discovery, T1613]
+    - rule: Kubernetes Private Key Exfil
+      desc: Detect common tools used to exfiltrate Kubernetes CA/SA keys
+      condition: >
+        evt.type = execve and
+        proc.name in (cp, scp, rsync, tar, nc, ncat, curl, wget, base64, bzip2, gzip) and
+        (
+          proc.args contains "/var/snap/microk8s/current/certs/ca.key" or 
+          proc.args contains "/var/snap/microk8s/current/certs/serviceaccount.key"
+        )
+      output: >
+        [K8s Golden Ticket] Potential CA/SA key exfiltration using %proc.name |
+        user=%user.name cmd=%proc.cmdline
+      priority: WARNING
+      tags: [pki, exfiltration, T1005, credential-access]
+  rbac-rules.yaml: |-
+    - rule: ClusterRole Binding To Anonymous User
+      desc: Detect attempts to bind ClusterRoles to anonymous users
+      condition: >
+        ka.target.resource=clusterrolebindings and
+        ka.verb=create and 
+        (ka.req.binding.subjects.user_names intersects ("system:unauthenticated", "system:anonymous"))
+      output: Cluster Role Binding to anonymous user (user=%ka.user.name subject=%ka.req.binding.subjects)
+      priority: WARNING 
+      tags: [T1098.006, rbac, access-control, persistence]
+      source: k8s_audit
+    - rule: ClusterRole Binding To Cluster Admin
+      desc: Detect attempts to bind ClusterRoles to anonymous users
+      condition: >
+        ka.target.resource in ("rolebindings", "clusterrolebindings") and 
+        ka.verb=create and 
+        ka.req.binding.role=cluster-admin
+      output: Cluster Role Binding to Cluster Admin (user=%ka.user.name subject=%ka.req.binding.subjects)
+      priority: WARNING 
+      tags: [T1098.006, rbac, access-control, persistence]
+      source: k8s_audit
+    - rule: RBAC Wildcard Permissions Detected
+      desc: Detect creation or update of RBAC roles with wildcard verbs or resources
+      condition: >
+        ka.target.resource in ("roles", "clusterroles") and
+        ka.verb in (create, update, patch) and
+        (
+          ka.req.role.rules.resources intersects ("*") or
+          ka.req.role.rules.verbs intersects ("*")
+        )
+      output: >
+        RBAC wildcard detected: %ka.user.name modified %ka.target.resource with wildcard permissions
+      priority: CRITICAL
+      source: k8s_audit
+      tags: [misconfiguration, rbac, access-control, persistence]
+    - rule: Namespaced SA Bound to ClusterRole
+      desc: Detect RoleBindings that bind a ServiceAccount to a ClusterRole
+      condition: >
+        ka.target.resource in ("rolebindings", "clusterrolebindings") and
+        ka.verb=create and
+        (len(ka.req.binding.subjects.serviceaccount_names) > 0 or len(ka.req.binding.subjects.serviceaccount_ns_names) > 0) and
+        ka.req.binding.role exists
+      output: >
+        Potential privilege escalation: %ka.user.name bound SA %ka.req.binding.subjects.name to ClusterRole %ka.req.binding.role
+      priority: WARNING
+      source: k8s_audit
+      tags: [T1098.006, rbac, access-control, persistence, privilege-escalation]
+  serviceaccount-rules.yaml: |-
+    - rule: CLI Token Usage by Local Process
+      desc: Detect usage of kubectl or curl with explicit tokens
+      condition: >
+        evt.type = execve and
+        (proc.name = "kubectl" or proc.name = "curl") and
+        (proc.cmdline contains "--token" or proc.cmdline contains "Authorization: Bearer")
+      output: >
+        Suspicious use of kubectl or curl with token |
+        user=%user.name command=%proc.cmdline container=%container.name
+      priority: NOTICE
+      tags: [T1528, privilege_escalation, serviceaccount]
+    - rule: Pod ServiceAccount Token File Access
+      desc: Detect attempts to read the Kubernetes ServiceAccount token from a pod filesystem
+      condition: >
+        evt.is_open_read = true and
+        (container.id != host) and
+        fd.name = "/var/run/secrets/kubernetes.io/serviceaccount/token" and
+        not proc.cmdline in ("meta-collector run", "kube-controller", "hostpath-provis", "coredns -conf /etc/coredns/Corefile", "calico-node -status-reporter", "calico-node -felix", "calico-node -allocate-tunnel-addrs")
+      output: >
+        Pod reading its service account token file |
+        user=%user.name container=%container.name process=%proc.cmdline
+      priority: NOTICE
+      tags: [T1528, credential_access, serviceaccount]
+    - rule: Privileged or Host-Level Container Creation
+      desc: Detect creation of Kubernetes pods that include privileged containers or host-level access
+      condition: >
+        ka.verb = "create" and
+        ka.target.resource = "pods" and
+        ka.req.pod.containers.privileged intersects (true) and
+        not ka.user.name contains "system:serviceaccount:kube-system:"
+      output: >
+        Privileged or host-level container created in namespace=%ka.target.namespace
+        by=%ka.user.name pod=%ka.resp.name
+      priority: CRITICAL
+      source: k8s_audit
+      tags: [T1610, privilege-escalation, container, runtime]
+  writablevolumemounts-rules.yaml: |-
+    - rule: Symlink To Host Files
+      desc: Detect creation of symlinks inside a container that point to sensitive host paths
+      condition: >
+        (evt.type in (symlink, symlinkat)) and
+        (evt.arg.target in ("/etc/shadow", "/etc/sudoers", "/etc/passwd") or 
+        evt.arg.target in ("/etc/sudoers.d", "/etc", "/var/log")) and
+        not proc.cmdline contains "podman"
+      output: >
+        Suspicious symlink created inside container (src=%evt.arg.path target=%evt.arg.target proc=%proc.cmdline user=%user.name file=%fd.filename linkpath=%evt.arg.linkpath process=%proc.name proc_exepath=%proc.exepath parent=%proc.pname command=%proc.cmdline terminal=%proc.tty)
+      priority: WARNING
+      tags: [T1611, container, host-escape, symlink]
+    - rule: Pod Using hostPath to Mount Root Filesystem
+      desc: Detects creation of a pod mounting / from the host filesystem, which allows full host takeover.
+      condition: >
+        ka.target.resource = "pods" and
+        ka.verb=create and
+        ka.req.pod.volumes.hostpath intersects (/)
+      output: >
+        HostPath Root Mount Detected:
+        user=%ka.user.name pod=%ka.req.pod.containers.name namespace=%ka.target.namespace
+        hostPath=%ka.req.pod.volumes.hostpath
+      priority: WARNING
+      source: k8s_audit
+      tags: [T1611, hostpath, privilege-escalation, container-escape]
+    - rule: Container Accessing Mounted Host Root Filesystem
+      desc: Detects a container reading or writing files inside a hostPath-mounted root filesystem.
+      condition: >
+        (container.id != host) and
+        evt.type in (open, openat, openat2) and
+        k8s.ns.name != "falco" and
+        not k8s.pod.name contains "falco" and
+        fd.name startswith "/host"
+      output: >
+        Suspicious access to host root filesystem.
+        container=%container.name image=%container.image.fullpath
+        user=%user.name file=%fd.name
+      priority: CRITICAL
+      tags: [T1611, hostpath, escape, privilege-escalation]
+  admissioncontroller-rules.yaml: |-
+    - rule: Modify Admission Webhook Configuration
+      desc: Detect creation or modification of Mutating/ValidatingWebhookConfigurations
+      condition: >
+        ka.target.resource in (mutatingwebhookconfigurations, validatingwebhookconfigurations) and
+        ka.verb in (create, patch, update)
+      output: >
+        Potential malicious admission controller change |
+        user=%ka.user.name verb=%ka.verb resource=%ka.target.resource name=%ka.target.name
+      priority: NOTICE
+      source: k8s_audit
+      tags: [persistence, T1562, T1204, admission, backdoor]
+    - rule: Read Admission Webhook Configurations
+      desc: Detect attempts to list or get admission controller configurations
+      condition: >
+        ka.target.resource in (mutatingwebhookconfigurations, validatingwebhookconfigurations)
+        and ka.verb in (list, get)
+        and not (ka.user.name  in ("system:serviceaccount:kube-system:replicaset-controller", "system:kube-controller-manager", "system:apiserver"))
+      output: >
+        Enumeration of admission controllers |
+        user=%ka.user.name verb=%ka.verb resource=%ka.target.resource
+      priority: NOTICE
+      source: k8s_audit
+      tags: [admission, recon]
+    - rule: Delete Admission Webhook Configuration
+      desc: Detect deletion of admission controller configurations
+      condition: >
+        ka.target.resource in (mutatingwebhookconfigurations, validatingwebhookconfigurations) and
+        ka.verb=delete
+      output: >
+        Admission webhook deleted |
+        user=%ka.user.name resource=%ka.target.resource name=%ka.target.name
+      priority: NOTICE
+      source: k8s_audit
+      tags: [persistence, admission, T1562]
