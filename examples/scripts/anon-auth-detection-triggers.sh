@@ -50,8 +50,50 @@ info "Installing kubeletctl..."
 curl -LO https://github.com/cyberark/kubeletctl/releases/download/v1.13/kubeletctl_linux_amd64 >/dev/null 2>&1 && chmod a+x ./kubeletctl_linux_amd64 && mv ./kubeletctl_linux_amd64 /usr/local/bin/kubeletctl 
 info "Triggering Rule(s): Anonymous Request Denied"
 curl -k https://127.0.0.1:16443/api/v1/namespaces/default/pods >/dev/null 2>&1
-info "Creating vulnerable RBAC Configuration..."
-kubectl apply -f allow-anon-pods.yaml
+cat <<EOF | kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: anon-pod
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list","create"]
+  
+- apiGroups: ["authentication.k8s.io", "authorization.k8s.io"]
+  resources: ["selfsubjectreviews", "selfsubjectrulesreviews"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: anon-pod-binding
+subjects:
+- kind: User
+  name: system:anonymous
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: anon-pod-reader
+  apiGroup: rbac.authorization.k8s.io
+EOF
+cat > "pod.json" <<EOF 
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "name": "curly-pod"
+  },
+  "spec": {
+    "containers": [
+      {
+        "name": "test",
+        "image": "nginx:latest"
+      }
+    ]
+  }
+}
+EOF
 
 success "Vulnerable environment configured..."
 
@@ -78,6 +120,7 @@ info "Cleaning up...."
 info "Deleting pod artifacts"
 kubectl delete pod test-pod
 kubectl delete pod anon-poc
+rm pod.json
 info "Deleting pod RBAC"
 kubectl delete clusterrole anon-pod-reader
 kubectl delete clusterrolebinding anon-pod-reader-binding
