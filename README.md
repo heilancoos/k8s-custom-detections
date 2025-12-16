@@ -16,8 +16,9 @@ These detections were developed as part of a larger research project on Kubernet
 The goal of this repo is to provide actionable detections and easy reproduction steps for defenders, students, and researchers.
 
 
-## How to use this repo
+## Usage
 
+### Installation
 ```bash
 git clone https://github.com/heilancoos/k8s-custom-detections.git
 cd k8s-custom-detections
