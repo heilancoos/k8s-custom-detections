@@ -13,7 +13,7 @@ These detections were developed as part of a larger research project on Kubernet
 - Malicious admission controllers
 - Kubernetes “Golden Ticket” certificate forgery
 
-**Blog Post**: https://heilancoos.github.io/research/2025/12/17/kubernetes.html
+**Blog Post**: https://heilancoos.github.io/research/2025/12/16/kubernetes.html
 ### `falco/rules/`
 Contains **custom Falco rules** grouped by attack surface (RBAC, CoreDNS, etcd, admission controllers, etc.).
 
