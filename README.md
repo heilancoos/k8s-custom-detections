@@ -57,6 +57,3 @@ Example:
 ```bash
 ./lab_setup/clean.sh
 ```
-```
-./cleanup.sh
-```bash
