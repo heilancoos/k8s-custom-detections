@@ -22,6 +22,15 @@ Each file focuses on a specific attack class and is intended to be:
 - Auditable
 - Tunable for real environments
 
+To test specific rules:
+Edit lab_setup/values.yaml and replace the `customRules: {}` block.
+
+Then reload with:
+
+```bash
+helm upgrade --namespace falco falco falcosecurity/falco -f values.yaml	
+```
+
 ### `examples/`
 Contains **reproducible test scripts** that intentionally trigger the detections.
 
