@@ -41,6 +41,8 @@ These scripts:
 ## Usage
 
 ### Installation
+
+**Scripts were tested on Ubuntu 24.04**
 ```bash
 git clone https://github.com/heilancoos/k8s-custom-detections.git
 cd k8s-custom-detections
